@@ -4,7 +4,7 @@
 
 Turn policies, statements, agreements, invoices, tax records, and other life-admin files into searchable answers, reminders, and structured insights.
 
-[Live demo](https://malcomman.duckdns.org/jini/) · [Developer documentation](https://malcomman.duckdns.org/jini/docs) · [Portfolio](https://malcomman.duckdns.org/muditya/)
+[Live demo](https://jini-document-intelligence.vercel.app) · [Developer documentation](https://github.com/0xMudit/jini-document-intelligence/tree/main/docs) · [Portfolio](https://mudityaraghav.vercel.app)
 
 ## Why this project matters
 
@@ -90,7 +90,7 @@ volumes:
 Requires Node.js 22+.
 
 ```bash
-git clone https://github.com/0xMudit/Jini.git
+git clone https://github.com/0xMudit/jini-document-intelligence.git
 cd Jini
 npm install
 cp .env.example .env
