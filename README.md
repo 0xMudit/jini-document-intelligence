@@ -123,7 +123,7 @@ npm run test:watch    # watch mode
 
 Push to `main` triggers GitHub Actions:
 1. Lint → Test → Build
-2. Docker image built and pushed to `ghcr.io/0xMudit/jini-document-intelligence:latest`
+2. Docker image built and pushed to `ghcr.io/0xmudit/jini-document-intelligence:latest`
 
 ---
 
