@@ -1,0 +1,28 @@
+# Single-service compose file matching "Docker (recommended)" in README.md.
+#
+#   GROQ_API_KEY=gsk_... docker compose up --build
+#
+# Groq is optional: without a key the app still answers using the local
+# extractive RAG pipeline, so the default stack needs no credentials.
+services:
+  jini:
+    build: .
+    ports:
+      - "8788:8788"
+    volumes:
+      # SQLite database and uploaded files live here, so the data survives a
+      # container rebuild.
+      - jini-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=8788
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8788/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  jini-data:

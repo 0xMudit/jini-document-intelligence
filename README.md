@@ -62,27 +62,10 @@ docker run -d \
   jini
 ```
 
-Or with `docker-compose.yml`:
+Or with the included `docker-compose.yml`, which leaves Groq optional and persists the SQLite database and uploads in a named volume:
 
-```yaml
-services:
-  jini:
-    build: .
-    ports:
-      - "8788:8788"
-    volumes:
-      - jini-data:/app/data
-    environment:
-      - GROQ_API_KEY=gsk_your_key_here
-      - NODE_ENV=production
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8788/api/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-
-volumes:
-  jini-data:
+```bash
+GROQ_API_KEY=gsk_your_key_here docker compose up --build
 ```
 
 ### EC2 (without Docker)
@@ -91,7 +74,7 @@ Requires Node.js 22+.
 
 ```bash
 git clone https://github.com/0xMudit/jini-document-intelligence.git
-cd Jini
+cd jini-document-intelligence
 npm install
 cp .env.example .env
 nano .env              # add GROQ_API_KEY, adjust PORT if needed
@@ -140,7 +123,7 @@ npm run test:watch    # watch mode
 
 Push to `main` triggers GitHub Actions:
 1. Lint → Test → Build
-2. Docker image built and pushed to `ghcr.io/0xMudit/Jini:latest`
+2. Docker image built and pushed to `ghcr.io/0xMudit/jini-document-intelligence:latest`
 
 ---
 
