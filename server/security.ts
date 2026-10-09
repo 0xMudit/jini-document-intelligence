@@ -31,6 +31,7 @@ export function securityHeaders(_request: Request, response: Response, next: Nex
       "style-src 'self'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
+      "media-src 'self' blob: https://commondatastorage.googleapis.com https://storage.googleapis.com",
       "connect-src 'self'",
     ].join("; "),
   );

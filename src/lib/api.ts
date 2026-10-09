@@ -1,5 +1,3 @@
-import { format, formatDistanceToNow, parseISO } from "date-fns";
-
 const apiBase = (import.meta.env.VITE_API_BASE ?? "").replace(/\/$/, "");
 
 function resolveRequestPath(path: string) {
@@ -17,8 +15,8 @@ export class RequestError extends Error {
   }
 }
 
-export async function request<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(resolveRequestPath(path), { ...init, credentials: "include", signal });
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(resolveRequestPath(path), { ...init, credentials: "include" });
   if (!response.ok) {
     const body = await response.text();
     let message = body || `Request failed: ${response.status}`;
@@ -38,34 +36,47 @@ export function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-export function formatDate(value: string) {
-  try {
-    return format(parseISO(value), "dd MMM yyyy");
-  } catch {
-    return value.slice(0, 10);
-  }
+/** 128 -> "2h 8m", 32 -> "32m", 45 -> "45m" */
+export function formatRuntime(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  if (!hours) return `${rest}m`;
+  return rest ? `${hours}h ${rest}m` : `${hours}h`;
 }
 
-export function relativeDate(value: string) {
-  try {
-    return formatDistanceToNow(parseISO(value), { addSuffix: true });
-  } catch {
-    return "";
-  }
+export function formatSeconds(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return hours ? `${hours}:${pad(minutes)}:${pad(secs)}` : `${pad(minutes)}:${pad(secs)}`;
 }
 
-export function formatINR(value: number) {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(value);
+export function starsFor(rating: number) {
+  return {
+    full: Math.floor(rating),
+    half: rating - Math.floor(rating) >= 0.25 && rating - Math.floor(rating) < 0.75,
+    empty: 5 - Math.ceil(rating),
+  };
 }
 
-export function formatFileSize(bytes: number) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+export function posterUrl(titleId: string) {
+  return resolveArtPath(`/api/art/poster/${titleId}.svg`);
+}
+
+export function bannerUrl(titleId: string) {
+  return resolveArtPath(`/api/art/banner/${titleId}.svg`);
+}
+
+export function videoSrc(path: string) {
+  if (apiBase && path.startsWith("/api/")) return `${apiBase}${path.slice(4)}`;
+  return path;
+}
+
+function resolveArtPath(path: string) {
+  if (apiBase && path.startsWith("/api/art")) return `${apiBase}${path.slice(8)}`;
+  return path;
 }
 
 export function getGreeting() {

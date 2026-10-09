@@ -1,543 +1,358 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  BookOpen, ChevronRight, Loader2, LockKeyhole,
-  LogOut, Menu, PlayCircle, RefreshCw, Settings, ShieldCheck, Sparkles, Upload, X,
-} from "lucide-react";
-import type { AuthUser, AISettings, BusyState, ChatMessage, DocumentCategory, Health, Insights, Notice, Reminder, SearchResult, VaultDocument, View, QueryResponse } from "./types";
-import { navItems, viewCopy, starterQuestions } from "./types";
-import { request, RequestError, getErrorMessage, getGreeting } from "./lib/api";
-import { ProductTour } from "./components/ProductTour";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { NavBar } from "./components/NavBar";
+import { Spinner } from "./components/Spinner";
+import { getErrorMessage, request } from "./lib/api";
+import { useRouter } from "./lib/router";
+import type { AuthUser, BrowseResponse, Genre, Notice, PlaybackInfo, Route, Title, TitleLite } from "./types";
 import { AuthScreen } from "./views/AuthScreen";
-import { HomeView } from "./views/HomeView";
-import { AssistantView } from "./views/AssistantView";
+import { BrowseView } from "./views/BrowseView";
+import { DetailsView } from "./views/DetailsView";
+import { GenreView } from "./views/GenreView";
+import { MyListView } from "./views/MyListView";
+import { InsightsView } from "./views/InsightsView";
 import { LibraryView } from "./views/LibraryView";
-import { TimelineView } from "./views/TimelineView";
-import { SettingsView } from "./views/SettingsView";
-import "./Jini.css";
+import { PlayerView } from "./views/PlayerView";
+import { SearchView } from "./views/SearchView";
 
-const docsHref = `${import.meta.env.BASE_URL}docs`;
+const TEST_EMAIL = "test@jini.local";
+const TEST_PASSWORD = "JiniTest123!";
 
-function Jini() {
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
+export function Jini() {
+  const { route, navigate } = useRouter();
+  const [authState, setAuthState] = useState<"loading" | "signedout" | "signedin">("loading");
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [authError, setAuthError] = useState("");
-  const [activeView, setActiveView] = useState<View>("home");
-  const [documents, setDocuments] = useState<VaultDocument[]>([]);
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [insights, setInsights] = useState<Insights | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [aiSettings, setAISettings] = useState<AISettings>({
-    configured: false, model: "llama-3.3-70b-versatile", source: "none", provider: "Groq",
-  });
-  const [selectedCategory, setSelectedCategory] = useState<DocumentCategory | "All">("All");
-  const [question, setQuestion] = useState("");
-  const [queryResponse, setQueryResponse] = useState<QueryResponse | null>(null);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
-  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [busy, setBusy] = useState<BusyState>("refresh");
-  const [dragActive, setDragActive] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const [genres, setGenres] = useState<Genre[]>([]);
+  const [browse, setBrowse] = useState<BrowseResponse | null>(null);
+  const [list, setList] = useState<TitleLite[] | null>(null);
+  const [listIds, setListIds] = useState<Set<string>>(() => new Set());
+
+  const [details, setDetails] = useState<Title | null>(null);
+  const [detailsError, setDetailsError] = useState("");
+  const [playback, setPlayback] = useState<PlaybackInfo | null>(null);
+  const [playbackError, setPlaybackError] = useState("");
   const [notice, setNotice] = useState<Notice | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [tourOpen, setTourOpen] = useState(
-    () => window.localStorage.getItem("jini-tour-complete") !== "true",
-  );
-  const [tourStep, setTourStep] = useState(0);
 
-  const selectedDocument = useMemo(
-    () => documents.find((document) => document.id === selectedDocumentId) ?? documents[0] ?? null,
-    [documents, selectedDocumentId],
-  );
+  const previousRouteRef = useRef<Route | null>(null);
 
-  const openReminders = useMemo(
-    () => reminders.filter((reminder) => reminder.status === "open"),
-    [reminders],
-  );
+  const postJson = useCallback((url: string, body: unknown) =>
+    request<{ user: AuthUser }>(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }), []);
 
-  const hasDemoData = useMemo(
-    () => documents.some((document) => document.storedName.startsWith("demo:")),
-    [documents],
-  );
-
-  const hasPrivateDocuments = useMemo(
-    () => documents.some((document) => !document.storedName.startsWith("demo:")),
-    [documents],
-  );
-
-  const refreshAll = useCallback(async () => {
-    setBusy((current) => current ?? "refresh");
+  const refreshBrowse = useCallback(async () => {
     try {
-      const [nextDocuments, nextReminders, nextInsights, nextHealth, nextAISettings] =
-        await Promise.all([
-          request<VaultDocument[]>("/api/documents"),
-          request<Reminder[]>("/api/reminders"),
-          request<Insights>("/api/insights"),
-          request<Health>("/api/health"),
-          request<AISettings>("/api/settings/ai"),
-        ]);
-      setDocuments(nextDocuments);
-      setReminders(nextReminders);
-      setInsights(nextInsights);
-      setHealth(nextHealth);
-      setAISettings(nextAISettings);
-    } catch (error) {
-      if (error instanceof RequestError && error.status === 401) {
-        setCurrentUser(null);
-        return;
-      }
-      setNotice({ tone: "error", message: getErrorMessage(error, "Unable to load Jini") });
-    } finally {
-      setBusy((current) => (current === "refresh" ? null : current));
+      const data = await request<BrowseResponse>("/api/browse");
+      setBrowse(data);
+    } catch {
+      // Browse failures are surfaced via the shared notice elsewhere.
     }
   }, []);
 
-  const runSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
+  const refreshList = useCallback(async () => {
     try {
-      const params = new URLSearchParams({ q: searchQuery, category: selectedCategory });
-      setSearchResults(await request<SearchResult[]>(`/api/search?${params.toString()}`));
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Search failed") });
+      const items = await request<TitleLite[]>("/api/me/list");
+      setList(items);
+      setListIds(new Set(items.map((item) => item.id)));
+    } catch {
+      // The list page will show an empty state if this fails.
     }
-  }, [searchQuery, selectedCategory]);
+  }, []);
 
+  // Restore the session on first paint.
   useEffect(() => {
     let active = true;
-    const controller = new AbortController();
-    request<{ user: AuthUser }>("/api/auth/me", undefined, controller.signal)
-      .then(async ({ user }) => {
-        if (!active) return;
-        setCurrentUser(user);
-        await refreshAll();
-      })
-      .catch((error: unknown) => {
-        if (active && (!(error instanceof RequestError) || error.status !== 401)) {
-          setAuthError(getErrorMessage(error, "Could not connect to Jini"));
-        }
-      })
-      .finally(() => {
+    request<{ user: AuthUser }>("/api/auth/me")
+      .then(({ user: me }) => {
         if (active) {
-          setAuthChecked(true);
-          setBusy(null);
+          setUser(me);
+          setAuthState("signedin");
         }
+      })
+      .catch(() => {
+        if (active) setAuthState("signedout");
       });
     return () => {
       active = false;
-      controller.abort();
     };
-  }, [refreshAll]);
+  }, []);
 
+  // Prime genres, browse rows and the My List once signed in.
   useEffect(() => {
-    const timer = window.setTimeout(() => void runSearch(), 260);
-    return () => window.clearTimeout(timer);
-  }, [runSearch]);
+    if (authState !== "signedin") return;
+    let active = true;
+    void request<Genre[]>("/api/genres")
+      .then((result) => {
+        if (active) setGenres(result);
+      })
+      .catch(() => undefined);
+    void refreshBrowse();
+    void refreshList();
+    return () => {
+      active = false;
+    };
+  }, [authState, refreshBrowse, refreshList]);
 
-  function navigate(view: View) {
-    setActiveView(view);
-    setMenuOpen(false);
-  }
+  // Load details whenever the user lands on a title page.
+  useEffect(() => {
+    if (authState !== "signedin" || (route.name !== "details" && route.name !== "player")) return;
+    let active = true;
+    setDetails(null);
+    setDetailsError("");
+    void request<Title>(`/api/titles/${encodeURIComponent(route.id)}`)
+      .then((title) => {
+        if (active) setDetails(title);
+      })
+      .catch((error) => {
+        if (active) setDetailsError(getErrorMessage(error, "Could not load this title."));
+      });
+    return () => {
+      active = false;
+    };
+  }, [authState, route]);
 
-  async function authenticate(path: string, body?: object, loadDemo = false) {
-    setBusy("auth");
+  // Load playback once a player route is active.
+  useEffect(() => {
+    if (authState !== "signedin" || route.name !== "player") return;
+    let active = true;
+    setPlayback(null);
+    setPlaybackError("");
+    const query = route.episodeId ? `?episode=${encodeURIComponent(route.episodeId)}` : "";
+    void request<PlaybackInfo>(`/api/titles/${encodeURIComponent(route.id)}/play${query}`)
+      .then((info) => {
+        if (active) setPlayback(info);
+      })
+      .catch((error) => {
+        if (active) setPlaybackError(getErrorMessage(error, "Unable to start playback."));
+      });
+    return () => {
+      active = false;
+    };
+  }, [authState, route]);
+
+  // Refresh browse rows (Continue Watching) when returning home.
+  useEffect(() => {
+    const previous = previousRouteRef.current;
+    previousRouteRef.current = route;
+    if (previous && previous.name !== "browse" && route.name === "browse") {
+      void refreshBrowse();
+    }
+  }, [route, refreshBrowse]);
+
+  // Scroll to the top on navigation.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [route]);
+
+  const inList = useCallback((id: string) => listIds.has(id), [listIds]);
+
+  const goOpen = useCallback((id: string) => navigate({ name: "details", id }), [navigate]);
+  const goPlay = useCallback((id: string, episodeId?: string) => navigate({ name: "player", id, episodeId }), [navigate]);
+
+  const toggleList = useCallback(async (id: string) => {
+    const previous = new Set(listIds);
+    const adding = !previous.has(id);
+    setListIds((current) => {
+      const next = new Set(current);
+      if (adding) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    try {
+      await request(`/api/me/list/${encodeURIComponent(id)}`, { method: adding ? "PUT" : "DELETE" });
+      await refreshList();
+      setNotice({ tone: "success", message: adding ? "Added to My List" : "Removed from My List" });
+    } catch (error) {
+      setListIds(previous);
+      setNotice({ tone: "error", message: getErrorMessage(error, "Could not update My List.") });
+    }
+  }, [listIds, refreshList]);
+
+  const savePosition = useCallback(async (titleId: string, episodeId: string | null, positionSeconds: number, durationSeconds: number) => {
+    try {
+      await request("/api/me/progress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ titleId, episodeId, positionSeconds, durationSeconds }),
+      });
+    } catch {
+      // Best-effort; progress restores next time a play screen loads.
+    }
+  }, []);
+
+  const playerEpisodes = useMemo(() => {
+    if (!details?.series) return [];
+    return details.series
+      .flatMap((season) => season.episodes)
+      .sort((a, b) => a.season - b.season || a.episode - b.episode);
+  }, [details]);
+
+  const handlePosition = useCallback((positionSeconds: number, durationSeconds: number) => {
+    if (!playback) return;
+    void savePosition(playback.titleId, playback.episode?.id ?? null, positionSeconds, durationSeconds);
+  }, [playback, savePosition]);
+
+  const handleEnded = useCallback((_positionSeconds: number, _durationSeconds: number) => {
+    if (!playback) return;
+    void savePosition(playback.titleId, playback.episode?.id ?? null, 0, playback.durationSeconds);
+    if (playback.kind === "series" && playback.episode) {
+      const index = playerEpisodes.findIndex((episode) => episode.id === playback.episode?.id);
+      const next = playerEpisodes[index + 1];
+      if (next) {
+        navigate({ name: "player", id: playback.titleId, episodeId: next.id });
+        return;
+      }
+    }
+    navigate({ name: "browse" });
+  }, [playback, playerEpisodes, savePosition, navigate]);
+
+  const handleSignIn = useCallback(async (email: string, password: string) => {
+    setAuthBusy(true);
     setAuthError("");
     try {
-      const { user } = await request<{ user: AuthUser }>(path, {
-        method: "POST",
-        headers: body ? { "Content-Type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-      });
-      setCurrentUser(user);
-      if (loadDemo) await request("/api/demo/seed", { method: "POST" });
-      await refreshAll();
+      const { user: signedIn } = await postJson("/api/auth/login", { email, password });
+      setUser(signedIn);
+      setAuthState("signedin");
     } catch (error) {
-      setAuthError(getErrorMessage(error, "Authentication failed"));
+      setAuthError(getErrorMessage(error, "Could not sign in."));
     } finally {
-      setBusy(null);
-      setAuthChecked(true);
+      setAuthBusy(false);
     }
-  }
+  }, [postJson]);
 
-  async function signOut() {
+  const handleSignUp = useCallback(async (name: string, email: string, password: string) => {
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const { user: created } = await postJson("/api/auth/signup", { name, email, password });
+      setUser(created);
+      setAuthState("signedin");
+    } catch (error) {
+      setAuthError(getErrorMessage(error, "Could not create the account."));
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [postJson]);
+
+  const handleGuest = useCallback(async () => {
+    setAuthBusy(true);
+    setAuthError("");
+    try {
+      const { user: guest } = await postJson("/api/auth/guest", {});
+      setUser(guest);
+      setAuthState("signedin");
+    } catch (error) {
+      setAuthError(getErrorMessage(error, "Guest preview is unavailable."));
+    } finally {
+      setAuthBusy(false);
+    }
+  }, [postJson]);
+
+  const handleSignOut = useCallback(async () => {
     try {
       await request("/api/auth/logout", { method: "POST" });
-    } finally {
-      setCurrentUser(null);
-      setDocuments([]);
-      setReminders([]);
-      setInsights(null);
-      setQueryResponse(null);
-      setChatMessages([]);
-      setNotice(null);
-      setActiveView("home");
+    } catch {
+      // Proceed to the sign-out screen regardless.
     }
-  }
+    setUser(null);
+    setAuthState("signedout");
+    setBrowse(null);
+    setList(null);
+    setListIds(new Set());
+    setDetails(null);
+    setPlayback(null);
+    navigate({ name: "browse" });
+  }, [navigate]);
 
-  async function askQuestion(nextQuestion = question) {
-    const trimmedQuestion = nextQuestion.trim();
-    if (!trimmedQuestion || busy === "query") return;
+  const activeGenre = route.name === "genre" ? genres.find((genre) => genre.id === route.id) ?? null : null;
 
-    const history = chatMessages.slice(-8).map((message) => ({
-      role: message.role,
-      content: message.content.slice(0, 1600),
-    }));
-    const userMessage: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: trimmedQuestion,
-    };
+  const goBack = useCallback(() => navigate({ name: "browse" }), [navigate]);
 
-    setChatMessages((current) => [...current, userMessage]);
-    setQuestion("");
-    setActiveView("assistant");
-    setBusy("query");
-    setNotice(null);
-    try {
-      const response = await request<QueryResponse>("/api/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: trimmedQuestion, category: selectedCategory, history }),
-      });
-      setQueryResponse(response);
-      setChatMessages((current) => [
-        ...current,
-        {
-          id: `assistant-${Date.now()}`,
-          role: "assistant",
-          content: response.answer,
-          mode: response.mode,
-          citations: response.citations,
-          suggestedActions: response.suggestedActions,
-        },
-      ]);
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Jini could not answer") });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function uploadFiles(files: FileList | File[]) {
-    const fileList = Array.from(files);
-    if (!fileList.length) return;
-    const formData = new FormData();
-    fileList.forEach((file) => formData.append("documents", file));
-    setBusy("upload");
-    setNotice(null);
-    try {
-      await request("/api/documents", { method: "POST", body: formData });
-      setNotice({
-        tone: "success",
-        message: `${fileList.length} document${fileList.length === 1 ? "" : "s"} indexed and ready`,
-      });
-      setActiveView("library");
-      await refreshAll();
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Upload failed") });
-    } finally {
-      setBusy(null);
-      setDragActive(false);
-    }
-  }
-
-  async function seedDemo() {
-    setBusy("seed");
-    setNotice(null);
-    try {
-      await request("/api/demo/seed", { method: "POST" });
-      await refreshAll();
-      setNotice({ tone: "success", message: "Guest workspace is ready. Try the question below." });
-      await askQuestion(starterQuestions[0]);
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Could not load guest workspace") });
-      setBusy(null);
-    }
-  }
-
-  async function toggleReminder(reminder: Reminder) {
-    try {
-      await request<Reminder>(`/api/reminders/${reminder.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: reminder.status === "open" ? "done" : "open" }),
-      });
-      await refreshAll();
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Reminder update failed") });
-    }
-  }
-
-  async function removeDocument(documentId: string) {
-    const document = documents.find((item) => item.id === documentId);
-    if (!document || !window.confirm(`Delete "${document.title}" from this vault?`)) return;
-    try {
-      await request(`/api/documents/${documentId}`, { method: "DELETE" });
-      setSelectedDocumentId(null);
-      setNotice({ tone: "success", message: "Document removed" });
-      await refreshAll();
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Delete failed") });
-    }
-  }
-
-  async function saveAISettings(apiKey: string, model: string) {
-    setBusy("settings");
-    setNotice(null);
-    try {
-      const nextSettings = await request<AISettings>("/api/settings/ai", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey, model }),
-      });
-      setAISettings(nextSettings);
-      setHealth((current) => (current ? { ...current, groq: true } : current));
-      setNotice({ tone: "success", message: "Groq connected for this server session" });
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Could not save AI settings") });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function clearAISettings() {
-    setBusy("settings");
-    try {
-      const nextSettings = await request<AISettings>("/api/settings/ai", { method: "DELETE" });
-      setAISettings(nextSettings);
-      setHealth((current) => current ? { ...current, groq: nextSettings.configured } : current);
-      setNotice({
-        tone: "neutral",
-        message: nextSettings.configured
-          ? "Session key cleared. Environment configuration is still active."
-          : "Session key cleared. Local extractive answers remain available.",
-      });
-    } catch (error) {
-      setNotice({ tone: "error", message: getErrorMessage(error, "Could not clear AI settings") });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  function openTour() {
-    setTourStep(0);
-    setTourOpen(true);
-  }
-
-  function closeTour() {
-    window.localStorage.setItem("jini-tour-complete", "true");
-    setTourOpen(false);
-  }
-
-  const onboardingSteps = [
-    {
-      label: "Explore a realistic vault",
-      detail: "Use safe demo documents to see the full workflow.",
-      done: hasDemoData,
-      action: () => void seedDemo(),
-      actionLabel: hasDemoData ? "Demo ready" : "Load demo",
-    },
-    {
-      label: "Ask your first question",
-      detail: "Get a grounded answer with the source attached.",
-      done: Boolean(queryResponse),
-      action: () => { navigate("assistant"); void askQuestion(); },
-      actionLabel: queryResponse ? "Answer ready" : "Ask now",
-    },
-    {
-      label: "Connect optional AI",
-      detail: "Local retrieval works without a key. Connect for synthesized answers.",
-      done: aiSettings.configured,
-      action: () => navigate("settings"),
-      actionLabel: aiSettings.configured ? "Connected" : "Open settings",
-    },
-  ];
-
-  const currentView = activeView === "home"
-    ? { ...viewCopy.home, title: getGreeting() }
-    : viewCopy[activeView];
-
-  if (!authChecked) {
+  if (authState === "loading") {
     return (
-      <div className="auth-shell auth-loading">
-        <span className="auth-brand-mark"><ShieldCheck size={26} /></span>
-        <Loader2 className="spin" size={22} />
-        <p>Opening Jini...</p>
+      <div className="splash">
+        <div className="splash-brand"><span>Ji</span>ni</div>
+        <Spinner label="Warming up the projector" />
       </div>
     );
   }
 
-  if (!currentUser) {
+  if (authState === "signedout") {
     return (
-      <AuthScreen
-        busy={busy === "auth"}
-        error={authError}
-        onGuest={() => authenticate("/api/auth/guest", undefined, true)}
-        onTestUser={() => authenticate("/api/auth/login", { email: "test@jini.local", password: "JiniTest123!" }, true)}
-        onSignIn={(email, password) => authenticate("/api/auth/login", { email, password })}
-        onSignUp={(name, email, password) => authenticate("/api/auth/signup", { name, email, password })}
-      />
+      <ErrorBoundary>
+        <AuthScreen busy={authBusy} error={authError} onGuest={handleGuest} onTestUser={() => handleSignIn(TEST_EMAIL, TEST_PASSWORD)} onSignIn={handleSignIn} onSignUp={handleSignUp} />
+      </ErrorBoundary>
     );
   }
 
+  if (route.name === "player") {
+    return (
+      <ErrorBoundary>
+        {playbackError ? (
+          <div className="player player-error">
+            <button className="back-button" onClick={goBack} type="button" aria-label="Go back">←</button>
+            <p>{playbackError}</p>
+            <button className="btn btn-play" onClick={goBack} type="button">Back to browsing</button>
+          </div>
+        ) : (
+          <PlayerView
+            episodes={playerEpisodes}
+            key={`${route.id}:${route.episodeId ?? ""}`}
+            onBack={goBack}
+            onEnded={handleEnded}
+            onPosition={handlePosition}
+            onSwitchEpisode={(episodeId) => navigate({ name: "player", id: route.id, episodeId })}
+            playback={playback}
+          />
+        )}
+      </ErrorBoundary>
+    );
+  }
+
+  if (route.name === "genre" && !activeGenre) {
+    return <Spinner label="Loading genres" />;
+  }
+
   return (
-    <div className="jini-shell">
-      <aside className={menuOpen ? "sidebar open" : "sidebar"}>
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true"><ShieldCheck size={20} /></div>
-          <div className="brand-copy">
-            <strong>Jini</strong>
-            <span>Private Document Intelligence</span>
-          </div>
-          <button aria-label="Close navigation" className="icon-button mobile-close" onClick={() => setMenuOpen(false)} type="button"><X size={18} /></button>
-        </div>
-
-        <div className="workspace-pill">
-          <span className="workspace-avatar">{currentUser.name.charAt(0).toUpperCase()}</span>
-          <span>
-            <strong>{currentUser.name}</strong>
-            <small>{currentUser.role === "hr" ? "Test user workspace" : currentUser.email}</small>
-          </span>
-          <ChevronRight size={16} />
-        </div>
-
-        <nav className="nav-list" aria-label="Primary navigation">
-          <span className="nav-label">Workspace</span>
-          {navItems.map((item) => (
-            <button
-              className={activeView === item.id ? "nav-item active" : "nav-item"}
-              key={item.id}
-              onClick={() => navigate(item.id)}
-              type="button"
-            >
-              <Sparkles size={17} />
-              <span>{item.label}</span>
-              {item.id === "timeline" && openReminders.length ? <small>{openReminders.length}</small> : null}
-            </button>
-          ))}
-        </nav>
-
-        <div className="sidebar-footer">
-          <button className="nav-item" onClick={openTour} type="button"><PlayCircle size={17} /><span>Product tour</span></button>
-          <button className={activeView === "settings" ? "nav-item active" : "nav-item"} onClick={() => navigate("settings")} type="button">
-            <Settings size={17} /><span>Settings</span>
-            <span aria-label={aiSettings.configured ? "AI connected" : "AI not connected"} className={aiSettings.configured ? "connection-dot connected" : "connection-dot"} />
-          </button>
-          <button className="nav-item" onClick={() => void signOut()} type="button"><LogOut size={17} /><span>Sign out</span></button>
-          <a className="nav-item nav-link" href={docsHref}><BookOpen size={17} /><span>Documentation</span></a>
-          <div className="privacy-note"><LockKeyhole size={15} /><span>Documents stay on this machine</span></div>
-        </div>
-      </aside>
-
-      {menuOpen ? (
-        <button aria-label="Close navigation overlay" className="sidebar-scrim" onClick={() => setMenuOpen(false)} type="button" />
-      ) : null}
-
-      <main className="workspace">
-        <header className="topbar">
-          <div className="topbar-title">
-            <button aria-label="Open navigation" className="icon-button menu-button" onClick={() => setMenuOpen(true)} type="button"><Menu size={18} /></button>
-            <div>
-              <p className="eyebrow">{currentView.eyebrow}</p>
-              <h1>{currentView.title}</h1>
-            </div>
-          </div>
-          <div className="topbar-actions">
-            <span className="mode-badge">
-              <span className={health?.groq ? "connection-dot connected" : "connection-dot"} />
-              {health?.groq ? "Groq connected" : "Local mode"}
-            </span>
-            <button className="icon-button" onClick={() => void refreshAll()} title="Refresh workspace" type="button">
-              {busy === "refresh" ? <Loader2 className="spin" size={17} /> : <RefreshCw size={17} />}
-            </button>
-            <label className="primary-button" htmlFor="global-upload">
-              {busy === "upload" ? <Loader2 className="spin" size={17} /> : <Upload size={17} />}
-              <span>Add documents</span>
-            </label>
-            <input accept=".pdf,.docx,.xlsx,.csv,.txt,.md,.json" id="global-upload" multiple onChange={(event) => { if (event.target.files) void uploadFiles(event.target.files); event.currentTarget.value = ""; }} type="file" />
-          </div>
-        </header>
-
-        {notice ? (
-          <div className={`notice ${notice.tone}`} role="status">
-            {notice.tone === "success" ? <ShieldCheck size={17} /> : <X size={17} />}
-            <span>{notice.message}</span>
-            <button aria-label="Dismiss message" onClick={() => setNotice(null)} type="button"><X size={15} /></button>
-          </div>
-        ) : null}
-
-        {activeView === "home" ? (
-          <HomeView
-            busy={busy}
-            documents={documents}
-            hasPrivateDocuments={hasPrivateDocuments}
-            insights={insights}
-            navigate={navigate}
-            onboardingSteps={onboardingSteps}
-            reminders={openReminders}
-            seedDemo={seedDemo}
-          />
-        ) : null}
-
-        {activeView === "assistant" ? (
-          <AssistantView
-            askQuestion={askQuestion}
-            busy={busy}
-            chatMessages={chatMessages}
-            documents={documents}
-            question={question}
-            selectedCategory={selectedCategory}
-            setQuestion={setQuestion}
-            setSelectedCategory={setSelectedCategory}
-          />
-        ) : null}
-
-        {activeView === "library" ? (
-          <LibraryView
-            busy={busy}
-            documents={documents}
-            dragActive={dragActive}
-            removeDocument={removeDocument}
-            results={searchResults}
-            searchQuery={searchQuery}
-            selectedCategory={selectedCategory}
-            selectedDocument={selectedDocument}
-            setDragActive={setDragActive}
-            setSearchQuery={setSearchQuery}
-            setSelectedCategory={setSelectedCategory}
-            setSelectedDocumentId={setSelectedDocumentId}
-            uploadFiles={uploadFiles}
-          />
-        ) : null}
-
-        {activeView === "timeline" ? (
-          <TimelineView reminders={reminders} toggleReminder={toggleReminder} />
-        ) : null}
-
-        {activeView === "settings" ? (
-          <SettingsView
-            aiSettings={aiSettings}
-            busy={busy}
-            clearAISettings={clearAISettings}
-            saveAISettings={saveAISettings}
-          />
-        ) : null}
-      </main>
-
-      <nav className="mobile-nav" aria-label="Mobile navigation">
-        {navItems.map((item) => (
-          <button className={activeView === item.id ? "active" : ""} key={item.id} onClick={() => navigate(item.id)} type="button">
-            <Sparkles size={19} />
-            <span>{item.label === "Ask Jini" ? "Ask" : item.label}</span>
-          </button>
-        ))}
-      </nav>
-
-      {tourOpen ? <ProductTour closeTour={closeTour} seedDemo={seedDemo} setTourStep={setTourStep} step={tourStep} /> : null}
-    </div>
+    <ErrorBoundary>
+      <div className="app">
+        <NavBar
+          activeGenre={activeGenre ?? undefined}
+          genres={genres}
+          onNavigate={navigate}
+          onSignOut={() => void handleSignOut()}
+          route={route}
+          user={user!}
+        />
+        <main className="content">
+          {route.name === "browse" ? (
+            <BrowseView browse={browse} inList={inList} onOpen={goOpen} onPlay={goPlay} onToggleList={(id) => void toggleList(id)} />
+          ) : null}
+          {route.name === "genre" && activeGenre ? (
+            <GenreView genre={activeGenre} inList={inList} onOpen={goOpen} onPlay={goPlay} onToggleList={(id) => void toggleList(id)} title={activeGenre.name} />
+          ) : null}
+          {route.name === "search" ? (
+            <SearchView inList={inList} onOpen={goOpen} onPlay={goPlay} onToggleList={(id) => void toggleList(id)} />
+          ) : null}
+          {route.name === "mylist" ? (
+            <MyListView inList={inList} items={list} loading={list === null} onOpen={goOpen} onPlay={goPlay} onToggleList={(id) => void toggleList(id)} />
+          ) : null}
+          {route.name === "insights" ? <InsightsView onNavigate={navigate} /> : null}
+          {route.name === "library" ? <LibraryView onNavigate={navigate} /> : null}
+          {route.name === "details" ? (
+            <DetailsView error={detailsError} inList={inList(route.id)} onBack={goBack} onPlay={goPlay} onToggleList={(id) => void toggleList(id)} title={details} />
+          ) : null}
+        </main>
+        <footer className="footer">
+          <p>Jini Stream — a self-hosted demo streaming service. Playback uses local files or public sample media.</p>
+        </footer>
+        {notice ? <div className={`toast toast-${notice.tone}`} role="status">{notice.message}</div> : null}
+      </div>
+    </ErrorBoundary>
   );
 }
-
-export default Jini;

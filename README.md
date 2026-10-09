@@ -1,22 +1,18 @@
-# Jini
+# Jini Stream
 
-**Private Document Intelligence** — a local-first RAG workspace for personal documents.
-
-Turn policies, statements, agreements, invoices, tax records, and other life-admin files into searchable answers, reminders, and structured insights.
-
-[Live demo](https://jini-document-intelligence.vercel.app) · [Developer documentation](https://github.com/0xMudit/jini-document-intelligence/tree/main/docs) · [Portfolio](https://mudityaraghav.vercel.app)
+**A self-hosted Netflix-style streaming demo.** Browse a rich mock catalog of movies and series, play titles instantly with resume support, and curate your own list — all on your own machine, no API keys required.
 
 ## Why this project matters
 
-Jini demonstrates an end-to-end document intelligence workflow without requiring a hosted vector database or a paid model. It combines multi-format ingestion, ranked retrieval, citations, structured extraction, authentication, persistence, security controls, tests, and containerized delivery in one TypeScript codebase.
+Jini Stream shows a complete streaming product — catalog, artwork, browsing, search, watch history, and a real HTTP range-serving video pipeline — built in one TypeScript codebase. It pairs a Netflix-style dark UI with an Express + SQLite backend that streams local video files with byte-range requests and falls back to public sample clips for the rest of the catalog.
 
 ### Engineering highlights
 
-- Local-first processing and SQLite persistence keep the default workflow private and self-contained.
-- Retrieval works without an API key; Groq synthesis is an optional enhancement rather than a hard dependency.
-- Upload validation, rate limiting, defensive headers, secure cookies, and origin controls are built into the API.
-- Thirty unit tests cover extraction utilities, ranking, parsing, and answer generation.
-- The responsive application and built-in documentation are deployed under a reverse-proxy subpath.
+- **Real streaming, not a stub.** `/api/video/:key` serves local MP4s with `Range` support (206 responses, seekable) and `302`-redirects to a public sample CDN for titles without local files.
+- **Self-contained catalog.** 51 hand-written titles (movies + multi-season series) with deterministic SVG posters/banners generated at runtime — no image assets to host.
+- **Persistence in SQLite.** Watch progress (Continue Watching + resume position) and My List are stored per account via `node:sqlite`, WAL mode.
+- **Auth + security built in.** scrypt password hashing, signed cookie sessions, guest/test accounts, rate limiting, strict CSP, and origin controls.
+- **Tested.** 19 unit tests cover catalog parsing, browsing/search composition, and playback/resume logic; lint and typecheck are clean; the frontend builds to a single bundle under `/jini/`.
 
 ---
 
@@ -24,7 +20,6 @@ Jini demonstrates an end-to-end document intelligence workflow without requiring
 
 ```bash
 npm install
-cp .env.example .env
 npm run dev
 ```
 
@@ -32,20 +27,22 @@ Open `http://localhost:5173/jini/`. The API runs at `http://localhost:8788`; Vit
 
 ### Test accounts
 - **Test user**: `test@jini.local` / `JiniTest123!`
-- **Guest**: click **Try live demo** for one-click access with sample data
+- **Guest**: click **Guest preview** on the sign-in screen for one-click access.
 
 ---
 
-## Features
+## Adding your own films
 
-- **Upload** PDF, DOCX, XLSX, CSV, TXT, Markdown, and JSON files
-- **Extract** text, categories, tags, dates, amounts, and summaries automatically
-- **Search** with ranked retrieval and document citations
-- **Ask** questions with local extractive RAG (no API key required)
-- **Synthesize** answers via Groq (optional, configure in Settings or `.env`)
-- **Track** reminders from expiry, due, warranty, and renewal dates
-- **Surface** high-value payments, subscriptions, tax coverage, and category mix
-- **Works offline** — documents and data stay on your machine
+The catalog marks four titles as backed by local files. Drop an MP4 named exactly after the key into `data/videos/` (already gitignored) and those titles stream from your disk:
+
+| Key                 | Title         |
+|---------------------|---------------|
+| `blood-red-sky.mp4` | Blood Red Sky |
+| `fall.mp4`          | Fall          |
+| `lights-out.mp4`    | Lights Out    |
+| `the-monkey.mp4`    | The Monkey    |
+
+MKV users: remux with `ffmpeg -i input.mkv -c copy -sn -map 0 -movflags +faststart data/videos/<key>.mp4`. Everything else in the catalog plays a public Blender Foundation sample clip (`BigBuckBunny`, `Sintel`, `ForBiggerEscapes`, …).
 
 ---
 
@@ -54,57 +51,60 @@ Open `http://localhost:5173/jini/`. The API runs at `http://localhost:8788`; Vit
 ### Docker (recommended)
 
 ```bash
-docker build -t jini .
+docker build -t jini-stream .
 docker run -d \
   -p 8788:8788 \
   -v jini-data:/app/data \
-  -e GROQ_API_KEY=gsk_your_key_here \
-  jini
+  jini-stream
 ```
 
-Or with the included `docker-compose.yml`, which leaves Groq optional and persists the SQLite database and uploads in a named volume:
+Or with the included `docker-compose.yml` (persists the database and video library in a named volume):
 
 ```bash
-GROQ_API_KEY=gsk_your_key_here docker compose up --build
+docker compose up --build
 ```
 
-### EC2 (without Docker)
+### Node directly
 
 Requires Node.js 22+.
 
 ```bash
-git clone https://github.com/0xMudit/jini-document-intelligence.git
-cd jini-document-intelligence
 npm install
 cp .env.example .env
-nano .env              # add GROQ_API_KEY, adjust PORT if needed
 npm run build
 npm start
 ```
 
-For a persistent process:
+Visit `http://localhost:8788` (or `http://<host>:8788/jini/` for the subpath build). For a persistent process:
 
 ```bash
-npm install -g pm2
 pm2 start npm --name jini -- start
-pm2 save
 ```
-
-Open port `8788` in the EC2 security group, then visit `http://<EC2_PUBLIC_IP>:8788`.
 
 ### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8788` | HTTP server port |
-| `VITE_API_BASE` | same origin | Optional browser API origin; leave empty when using the Vite/nginx proxy |
+| `VITE_API_BASE` | same origin | Optional browser API origin; leave empty when frontend and API share an origin |
 | `NODE_ENV` | `production` | Set `development` for pretty logging |
 | `LOG_LEVEL` | `info` | Pino log level (debug, info, warn, error) |
-| `GROQ_API_KEY` | — | Groq API key for LLM synthesis |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model name |
 | `COOKIE_SECURE` | `false` | Set `true` behind HTTPS |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
 | `ALLOWED_ORIGINS` | — | Comma-separated CORS origins |
+| `DATA_DIR` | `data` | Runtime folder (SQLite DB + `videos/`) |
+| `TEST_USER_PASSWORD` | `JiniTest123!` | Seeded test account password |
+
+---
+
+## Features
+
+- **Browse** — hero spotlight, themed rows (Trending, New, Jini Originals, Continue Watching…), genre browsing
+- **Search** — debounced lookup across titles, descriptions, and credits
+- **My List** — add/remove from any card or details page, persisted per account
+- **Details** — synopsis, ratings, cast/directors, plus episodes & season picker for series
+- **Player** — full-screen playback, resume from where you left off, throttled progress saves, episode swapper, auto-next
+- **Everything works offline** — catalog, artwork, and accounts are fully local
 
 ---
 
@@ -112,18 +112,11 @@ Open port `8788` in the EC2 security group, then visit `http://<EC2_PUBLIC_IP>:8
 
 ```bash
 npm test              # run once
-npm run test:watch    # watch mode
+npm run lint          # eslint
+npm run build         # tsc + vite production build
 ```
 
-30 unit tests covering text extraction, chunking, categorization, date/amount parsing, RAG scoring, and extractive answers.
-
----
-
-## CI/CD
-
-Push to `main` triggers GitHub Actions:
-1. Lint → Test → Build
-2. Docker image built and pushed to `ghcr.io/0xmudit/jini-document-intelligence:latest`
+19 unit tests covering catalog integrity, browse row composition, search, and playback/resume behavior.
 
 ---
 
@@ -131,27 +124,25 @@ Push to `main` triggers GitHub Actions:
 
 ```
 server/
-  index.ts          Express app, routes, middleware
+  index.ts          Express app, routes, middleware, SPA serving
   auth.ts           SQLite users, scrypt hashing, cookie sessions
-  aiConfig.ts       Runtime Groq configuration
-  extractors.ts     PDF, DOCX, XLSX, CSV, text extraction
-  ingest.ts         Document processing pipeline
-  insights.ts       Dashboard aggregates
-  llm.ts            Groq answer synthesis
-  rag.ts            Retrieval, scoring, extractive answers
-  security.ts       CSP headers, rate limiting
-  storage.ts        SQLite document/reminder storage
-  textUtils.ts      Tokenization, chunking, date/amount parsing
-  textUtils.test.ts Unit tests for text utilities
-  rag.test.ts       Unit tests for RAG pipeline
+  catalog.ts        Seed catalog + lookup helpers, sample-video keys
+  browse.ts         Row building, hero pick, catalog search
+  playback.ts       Playback info + resume position for titles/episodes
+  stream.ts         Range serving for local files, remote redirect fallback
+  art.ts            Deterministic SVG poster/banner generators
+  storage.ts        SQLite media_progress / media_list persistence
+  security.ts       CSP headers, rate limiting, CORS, request IDs
+  *.test.ts         Vitest suites
 src/
-  Jini.tsx          Main app component
+  Jini.tsx          App shell: auth, routing, data orchestration
   types.ts          Shared TypeScript types
   lib/api.ts        API client, error handling, formatters
-  components/       ErrorBoundary, EmptyState, Metric, etc.
-  views/            AuthScreen, HomeView, AssistantView, etc.
+  lib/router.ts     Hash router (#/, #/search, #/title/:id, #/watch/:id)
+  components/       NavBar, HeroBanner, TitleRow, TitleCard, ArtImage…
+  views/            Browse, Details, Player, Search, My List, Auth
 data/
-  uploads/          Uploaded files (gitignored)
+  videos/           Local MP4 library keyed by catalog id (gitignored)
   jini.sqlite       SQLite database (gitignored)
 ```
 
@@ -164,7 +155,7 @@ data/
 | Frontend | React 19, TypeScript, Vite 8, Lucide icons |
 | Backend | Express 5, TypeScript, tsx |
 | Database | SQLite (Node `node:sqlite`, WAL mode) |
-| AI | Groq API (OpenAI-compatible), local extractive RAG |
+| Streaming | HTTP Range requests; remote 302 fallback to public sample clips |
 | Logging | Pino with pino-pretty (dev) |
 | Testing | Vitest |
 | CI | GitHub Actions |

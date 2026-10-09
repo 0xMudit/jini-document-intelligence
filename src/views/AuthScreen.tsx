@@ -1,10 +1,8 @@
 import { useState } from "react";
 import {
-  AlertCircle, BookOpen, Database, Eye, EyeOff, LockKeyhole,
-  LogIn, Loader2, ShieldCheck, Sparkles, UserPlus,
+  AlertCircle, Clapperboard, Eye, EyeOff, Loader2,
+  LockKeyhole, LogIn, PlayCircle, UserPlus, Video,
 } from "lucide-react";
-
-const docsHref = `${import.meta.env.BASE_URL}docs`;
 
 export function AuthScreen({
   busy,
@@ -31,18 +29,18 @@ export function AuthScreen({
     <div className="auth-shell">
       <section className="auth-intro">
         <div className="auth-brand">
-          <span className="auth-brand-mark"><ShieldCheck size={24} /></span>
-          <span><strong>Jini</strong><small>Private Document Intelligence</small></span>
+          <span className="auth-brand-mark"><Clapperboard size={24} /></span>
+          <span><strong>Jini</strong><small>Stream anything</small></span>
         </div>
         <div className="auth-copy">
-          <p className="eyebrow">Your private knowledge workspace</p>
-          <h1>Documents in. Clear answers out.</h1>
-          <p>Search policies, statements, agreements, and personal records with grounded Groq-powered answers.</p>
+          <p className="eyebrow">Your personal streaming service</p>
+          <h1>Movies & series. Endless trailers.</h1>
+          <p>Browse a rich catalog of films and series, watch instantly, and keep your place across devices.</p>
         </div>
         <div className="auth-trust">
-          <span><LockKeyhole size={16} /> Local, isolated workspaces</span>
-          <span><Sparkles size={16} /> Fast Groq inference</span>
-          <span><Database size={16} /> SQLite account security</span>
+          <span><Video size={16} /> Instant playback</span>
+          <span><PlayCircle size={16} /> Resume where you left off</span>
+          <span><LockKeyhole size={16} /> Private, self-hosted</span>
         </div>
       </section>
 
@@ -54,8 +52,8 @@ export function AuthScreen({
           </div>
 
           <div className="auth-card-heading">
-            <h2>{mode === "signin" ? "Welcome back" : "Create your workspace"}</h2>
-            <p>{mode === "signin" ? "Sign in to continue to your private vault." : "Your documents will be isolated from every other account."}</p>
+            <h2>{mode === "signin" ? "Welcome back" : "Create your account"}</h2>
+            <p>{mode === "signin" ? "Sign in to keep watching." : "One account, your whole library of favorites."}</p>
           </div>
 
           {error ? <div className="auth-error" role="alert"><AlertCircle size={16} /><span>{error}</span></div> : null}
@@ -76,7 +74,7 @@ export function AuthScreen({
             ) : null}
             <label>
               <span>Email address</span>
-              <input autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" required type="email" value={email} />
+              <input autoComplete="email" onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" required type="email" value={email} />
             </label>
             <label>
               <span>Password</span>
@@ -93,13 +91,12 @@ export function AuthScreen({
             </button>
           </form>
 
-          <div className="auth-divider"><span>or use a ready workspace</span></div>
+          <div className="auth-divider"><span>or hop straight in</span></div>
           <div className="auth-demo-actions">
             <button className="secondary-button" disabled={busy} onClick={() => void onTestUser()} type="button">Test user</button>
-            <button className="secondary-button" disabled={busy} onClick={() => void onGuest()} type="button">Try live demo</button>
+            <button className="secondary-button" disabled={busy} onClick={() => void onGuest()} type="button">Guest preview</button>
           </div>
           <p className="auth-test-hint">Test user login: <code>test@jini.local</code> / <code>JiniTest123!</code></p>
-          <a className="auth-docs-link" href={docsHref}><BookOpen size={14} /> Read the docs</a>
         </section>
       </main>
     </div>

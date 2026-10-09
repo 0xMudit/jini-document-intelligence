@@ -1,22 +1,27 @@
-# Single-service compose file matching "Docker (recommended)" in README.md.
-#
-#   GROQ_API_KEY=gsk_... docker compose up --build
-#
-# Groq is optional: without a key the app still answers using the local
-# extractive RAG pipeline, so the default stack needs no credentials.
+services:
+  # Single-service compose file matching "Docker (recommended)" in README.md.
+  #
+  #   docker compose up --build
+  #
+  # No credentials are required: the catalog is a curated mock library and video
+  # playback uses files you drop into the DATA_DIR (mounted as /app/data) or a
+  # small set of public sample clips (Blender Foundation, freely redistributable).
+  #
+  # To serve your own movies as the four "local" catalog titles, put files named
+  # exactly <key>.mp4 into the volume before starting, e.g.
+  #   data/videos/blood-red-sky.mp4, fall.mp4, lights-out.mp4, the-monkey.mp4
 services:
   jini:
     build: .
     ports:
       - "8788:8788"
     volumes:
-      # SQLite database and uploaded files live here, so the data survives a
+      # SQLite database and the local video library live here, so both survive a
       # container rebuild.
       - jini-data:/app/data
     environment:
       - NODE_ENV=production
       - PORT=8788
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8788/api/health"]
       interval: 30s

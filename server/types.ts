@@ -1,90 +1,99 @@
-export type DocumentCategory =
-  | "Identity"
-  | "Insurance"
-  | "Banking"
-  | "Employment"
-  | "Housing"
-  | "Medical"
-  | "Warranty"
-  | "Tax"
-  | "Education"
-  | "Loan"
-  | "Subscriptions"
-  | "General";
+export type MediaKind = "movie" | "series";
 
-export type ReminderStatus = "open" | "done";
+export type Maturity = "ALL" | "U" | "G" | "U/A 7+" | "U/A 13+" | "U/A 16+" | "A";
 
-export interface ExtractedDate {
+export interface Episode {
+  id: string;
+  season: number;
+  episode: number;
+  title: string;
+  description: string;
+  runtimeMinutes: number;
+  videoKey: string;
+  released: string;
+}
+
+export interface Season {
+  number: number;
+  episodes: Episode[];
+}
+
+export interface Title {
+  id: string;
+  kind: MediaKind;
+  title: string;
+  tagline: string;
+  description: string;
+  year: number;
+  maturity: Maturity;
+  runtimeMinutes: number;
+  genres: string[];
+  cast: string[];
+  directors: string[];
+  rating: number;
+  popularity: number;
+  isNew: boolean;
+  isTrending: boolean;
+  isOriginal: boolean;
+  releaseDate: string;
+  videoKey: string | null;
+  series: Season[] | null;
+  palette: string;
+}
+
+/** A title with the heavy fields (series, full synopses) stripped for rows. */
+export interface TitleLite {
+  id: string;
+  kind: MediaKind;
+  title: string;
+  year: number;
+  maturity: Maturity;
+  genres: string[];
+  rating: number;
+  runtimeMinutes: number;
+  isNew: boolean;
+  isOriginal: boolean;
+  palette: string;
+  progressPercent?: number;
+}
+
+export interface BrowseRow {
   id: string;
   label: string;
-  isoDate: string;
-  sourceText: string;
-  confidence: number;
+  items: TitleLite[];
 }
 
-export interface ExtractedAmount {
-  id: string;
-  amount: number;
-  currency: "INR" | "UNKNOWN";
-  sourceText: string;
+export interface BrowseResponse {
+  featured: Title | null;
+  rows: BrowseRow[];
 }
 
-export interface DocumentChunk {
-  id: string;
-  documentId: string;
-  ordinal: number;
-  text: string;
-  tokenCount: number;
+export interface WatchProgress {
+  titleId: string;
+  episodeId: string | null;
+  positionSeconds: number;
+  durationSeconds: number;
+  updatedAt: string;
+  percent: number;
 }
 
-export interface VaultDocument {
-  id: string;
-  ownerId: string;
+export interface PlaybackInfo {
+  titleId: string;
   title: string;
-  originalName: string;
-  storedName: string;
-  mimeType: string;
-  size: number;
-  uploadedAt: string;
-  category: DocumentCategory;
-  tags: string[];
-  summary: string;
-  extractedText: string;
-  dates: ExtractedDate[];
-  amounts: ExtractedAmount[];
-  chunks: DocumentChunk[];
+  kind: MediaKind;
+  episode: Episode | null;
+  streamUrl: string;
+  /** When "hls", the player should use the ABR master playlist instead of streamUrl. */
+  streamMode?: "direct" | "hls";
+  hlsMasterUrl?: string;
+  abrLadderUrl?: string;
+  durationSeconds: number;
+  positionSeconds: number;
 }
 
-export interface Reminder {
+export interface PublicUser {
   id: string;
-  ownerId: string;
-  documentId: string;
-  documentTitle: string;
-  title: string;
-  dueDate: string;
-  sourceText: string;
-  category: string;
-  status: ReminderStatus;
-  createdAt: string;
-}
-
-export interface QueryCitation {
-  documentId: string;
-  documentTitle: string;
-  category: DocumentCategory;
-  chunkId: string;
-  snippet: string;
-  score: number;
-}
-
-export interface QueryResponse {
-  answer: string;
-  mode: "llm" | "extractive";
-  citations: QueryCitation[];
-  suggestedActions: string[];
-}
-
-export interface VaultStore {
-  documents: VaultDocument[];
-  reminders: Reminder[];
+  name: string;
+  email: string;
+  role: "hr" | "guest" | "member";
 }
